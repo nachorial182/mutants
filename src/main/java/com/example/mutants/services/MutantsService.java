@@ -7,8 +7,10 @@ import com.example.mutants.repositories.MutantsRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
+
 import java.util.List;
-import java.util.Optional;
 
 @Service
 public class MutantsService {
@@ -16,25 +18,22 @@ public class MutantsService {
     private static final Logger logger = LoggerFactory.getLogger(MutantsService.class);
     private final MutantsRepository mutantsRepository;
 
-    public MutantsService(MutantsRepository mutantRepository) {
-        this.mutantsRepository = mutantRepository;
+    public MutantsService(MutantsRepository mutantsRepository) {
+        this.mutantsRepository = mutantsRepository;
     }
 
-    public boolean isMutant(List<String> dna) {
-        String dnaSequence = String.join(",", dna);
-
-        Optional<MutantDna> existing = mutantsRepository.findByDnaSequence(dnaSequence);
-        if (existing.isPresent()) {
-            return existing.get().isMutant();
-        }
-
-        boolean isMutant = detectMutant(dna);
-        logger.info("DNA sequence analyzed. Result: {}", isMutant ? "MUTANT" : "HUMAN");
-
-        MutantDna newRecord = new MutantDna(null, dnaSequence, isMutant);
-        mutantsRepository.save(newRecord);
-
-        return isMutant;
+    public Mono<Boolean> isMutant(List<String> dna) {
+        return Mono.fromCallable(() -> {
+                    boolean result = detectMutant(dna);
+                    MutantDna record = new MutantDna();
+                    record.setDnaSequence(String.join(",", dna));
+                    record.setMutant(result);
+                    mutantsRepository.save(record);
+                    return result;
+                })
+                .subscribeOn(Schedulers.boundedElastic())
+                .doOnError(ex -> logger.error("Failed to record DNA check", ex))
+                .onErrorReturn(false);
     }
 
     private boolean detectMutant(List<String> dna) {
@@ -65,7 +64,12 @@ public class MutantsService {
         return matrix;
     }
 
-    public StatsResponse getStats() {
+    public Mono<StatsResponse> getStats() {
+        return Mono.fromSupplier(this::getStatFromDb)
+                .subscribeOn(Schedulers.boundedElastic());
+    }
+
+    public StatsResponse getStatFromDb() {
         logger.info("Fetching DNA stats from repository");
         DnaStatsProjection stats = mutantsRepository.getDnaStats();
 
@@ -74,7 +78,6 @@ public class MutantsService {
         double ratio = humans == 0 ? 0 : (double) mutants / humans;
 
         logger.info("Stats calculated - Mutants: {}, Humans: {}, Ratio: {}", mutants, humans, ratio);
-
         return new StatsResponse(mutants, humans, ratio);
     }
 

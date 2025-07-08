@@ -1,58 +1,71 @@
 package com.example.mutants;
 
 import com.example.mutants.controllers.MutantsController;
+import com.example.mutants.dtos.DnaRequest;
 import com.example.mutants.dtos.StatsResponse;
 import com.example.mutants.services.MutantsService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.test.autoconfigure.web.reactive.WebFluxTest;
+import org.springframework.boot.test.autoconfigure.web.reactive.AutoConfigureWebTestClient;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
-import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.reactive.server.WebTestClient;
+import reactor.core.publisher.Mono;
+
+import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.mockito.BDDMockito.given;
 
-@WebMvcTest(MutantsController.class)
+@WebFluxTest(MutantsController.class)
+@AutoConfigureWebTestClient
 public class MutantsControllerTests {
 
     @Autowired
-    private MockMvc mockMvc;
+    private WebTestClient webClient;
 
     @MockBean
     private MutantsService mutantService;
 
     @Test
-    public void shouldReturn200ForMutant() throws Exception {
-        when(mutantService.isMutant(any())).thenReturn(true);
+    public void shouldReturn200ForMutant() {
+        given(mutantService.isMutant(any(List.class)))
+                .willReturn(Mono.just(true));
 
-        mockMvc.perform(post("/mutant")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"dna\": [\"ATGCGA\",\"CAGTGC\",\"TTATGT\",\"AGAAGG\",\"CCCCTA\",\"TCACTG\"]}"))
-                .andExpect(status().isOk());
+        webClient.post().uri("/mutant")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(new DnaRequest(List.of("ATGCGA","CAGTGC","TTATGT","AGAAGG","CCCCTA","TCACTG")))
+                .exchange()
+                .expectStatus().isOk();
     }
 
     @Test
-    public void shouldReturn403ForHuman() throws Exception {
-        when(mutantService.isMutant(any())).thenReturn(false);
-        mockMvc.perform(post("/mutant")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"dna\": [\"ATGCGA\",\"CAGTGC\",\"TTATGT\",\"AGAAGT\",\"CACCTA\",\"TCACTG\"]}"))
-                .andExpect(status().isForbidden());
+    public void shouldReturn403ForHuman() {
+        given(mutantService.isMutant(any(List.class)))
+                .willReturn(Mono.just(false));
+
+        webClient.post().uri("/mutant")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(new DnaRequest(List.of("ATGCGA","CAGTGC","TTATGT","AGAAGT","CACCTA","TCACTG")))
+                .exchange()
+                .expectStatus().isForbidden();
     }
 
     @Test
-    public void shouldReturnStats() throws Exception {
+    public void shouldReturnStats() {
         StatsResponse stats = new StatsResponse(40, 100, 0.4);
-        when(mutantService.getStats()).thenReturn(stats);
-        mockMvc.perform(get("/stats"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.count_mutant_dna").value(40))
-                .andExpect(jsonPath("$.count_human_dna").value(100))
-                .andExpect(jsonPath("$.ratio").value(0.4));
+        given(mutantService.getStats())
+                .willReturn(Mono.just(stats));
+
+        webClient.get().uri("/stats")
+                .accept(MediaType.APPLICATION_JSON)
+                .exchange()
+                .expectStatus().isOk()
+                .expectHeader().contentType(MediaType.APPLICATION_JSON)
+                .expectBody()
+                .jsonPath("$.count_mutant_dna").isEqualTo(40)
+                .jsonPath("$.count_human_dna").isEqualTo(100)
+                .jsonPath("$.ratio").isEqualTo(0.4);
     }
 }

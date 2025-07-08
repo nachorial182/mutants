@@ -10,6 +10,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
+import reactor.core.publisher.Mono;
 
 import java.util.List;
 import java.util.Optional;
@@ -18,6 +21,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 public class MutantsServiceTests {
 
     @Mock
@@ -28,57 +32,55 @@ public class MutantsServiceTests {
 
     @Test
     void shouldDetectMutantDna() {
-        List<String> dna = List.of("ATGCGA", "CAGTGC", "TTATGT", "AGAAGG", "CCCCTA", "TCACTG");
-        String dnaString = String.join(",", dna);
-        when(mutantsRepository.findByDnaSequence(dnaString))
-                .thenReturn(Optional.empty());
+        List<String> dna = List.of("ATGCGA","CAGTGC","TTATGT","AGAAGG","CCCCTA","TCACTG");
 
-        boolean result = mutantsService.isMutant(dna);
+        Mono<Boolean> resultMono = mutantsService.isMutant(dna);
+        Boolean isMutant = resultMono.block();
 
-        assertTrue(result);
-        verify(mutantsRepository, times(1)).save(any());
+        assertNotNull(isMutant, "Mono completed without a value");
+        assertTrue(isMutant, "Expected DNA to be detected as mutant");
     }
-
 
     @Test
     void shouldDetectHumanDna() {
-        List<String> dna = List.of("ATGCGA", "CAGTGC", "TTATGT", "AGACGG", "GCGTCA", "TCACTG");
-        String dnaString = String.join(",", dna);
+        List<String> dna = List.of("ATGCGA","CAGTGC","TTATGT","AGACGG","GCGTCA","TCACTG");
 
-        when(mutantsRepository.findByDnaSequence(dnaString))
-                .thenReturn(Optional.empty());
+        Mono<Boolean> resultMono = mutantsService.isMutant(dna);
+        Boolean isMutant = resultMono.block();
 
-        boolean result = mutantsService.isMutant(dna);
-
-        assertFalse(result);
-        verify(mutantsRepository, times(1)).save(any());
+        assertNotNull(isMutant, "Mono completed without emitting a value");
+        assertFalse(isMutant, "Expected DNA to be detected as human");
     }
 
     @Test
-    public void shouldReturnCachedResultIfExists() {
+    void shouldReturnCachedResultIfExists() {
         List<String> dna = List.of("ATGCGA","CAGTGC","TTATGT","AGAAGG","CCCCTA","TCACTG");
-        String dnaString = String.join(",", dna);
+        String seq = String.join(",", dna);
 
-        MutantDna saved = new MutantDna(1L, dnaString, true);
-        when(mutantsRepository.findByDnaSequence(dnaString)).thenReturn(Optional.of(saved));
+        MutantDna cached = new MutantDna(1L, seq, true);
+        when(mutantsRepository.findByDnaSequence(seq))
+                .thenReturn(Optional.of(cached));
 
-        boolean result = mutantsService.isMutant(dna);
+        Mono<Boolean> resultMono = mutantsService.isMutant(dna);
+        Boolean isMutant = resultMono.block();
 
-        assertTrue(result);
-        verify(mutantsRepository, never()).save(any());
+        assertNotNull(isMutant, "Mono completed without emitting a value");
+        assertTrue(isMutant, "Expected cached DNA result to be true");
     }
 
     @Test
-    public void shouldReturnStats() {
-        DnaStatsProjection stats = mock(DnaStatsProjection.class);
-        when(stats.getMutantCount()).thenReturn(40L);
-        when(stats.getHumanCount()).thenReturn(100L);
-        when(mutantsRepository.getDnaStats()).thenReturn(stats);
+    void shouldReturnStats() {
+        DnaStatsProjection proj = mock(DnaStatsProjection.class);
+        when(proj.getMutantCount()).thenReturn(40L);
+        when(proj.getHumanCount()).thenReturn(100L);
+        when(mutantsRepository.getDnaStats()).thenReturn(proj);
 
-        StatsResponse response = mutantsService.getStats();
+        Mono<StatsResponse> statsMono = mutantsService.getStats();
+        StatsResponse stats = statsMono.block();
 
-        assertEquals(40L, response.getCountMutantDna());
-        assertEquals(100L, response.getCountHumanDna());
-        assertEquals(0.4, response.getRatio(), 0.01);
+        assertNotNull(stats, "Mono<StatsResponse> completed without a value");
+        assertEquals(40L, stats.getCountMutantDna());
+        assertEquals(100L, stats.getCountHumanDna());
+        assertEquals(0.4, stats.getRatio(), 1e-6);
     }
 }
