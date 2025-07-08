@@ -1,0 +1,4 @@
+Retrieving logs...
+Logs were saved to /Users/nacho/Desktop/carpeta sin título/mutants/.elasticbeanstalk/logs/250706_220212
+Logs were saved to /Users/nacho/Desktop/carpeta sin título/mutants/.elasticbeanstalk/logs/250706_220212
+Updated symlink at /Users/nacho/Desktop/carpeta sin título/mutants/.elasticbeanstalk/logs/latest

@@ -1,0 +1,7 @@
+# Java/Maven
+target/
+*.log
+*.class
+/.idea
+/.elasticbeanstalk
+.DS_Store
